@@ -2,6 +2,9 @@ import { exec } from 'node:child_process';
 import fs from 'node:fs';
 import sharp from 'sharp';
 
+/** @type {'nothing' | 'removeBackground' | 'resize' | 'resizeAndRemoveBackground'} */
+const PROCESS_TYPE = 'nothing'
+
 const INPUT_DIRECTORY = "./input"
 const TEMP_DIRECTORY = "./temp"
 const OUTPUT_DIRECTORY = "./output"
@@ -23,8 +26,8 @@ const removeBackground = async (current, save) => {
   })
 }
 
-const resize = async (file) => {
-  const image = await sharp(`${INPUT_DIRECTORY}/${file}`)
+const resize = async (file, output) => {
+  const image = await sharp(file)
     .resize({
       width: Math.floor(width * 0.8),
       height: Math.floor(height * 0.8)
@@ -43,23 +46,61 @@ const resize = async (file) => {
       input: image
     }])
     .webp()
-    .toFile(`${OUTPUT_DIRECTORY}/${file}`)
+    .toFile(output)
+}
+
+const readFiles = async (extensions) => {
+  if (!fs.existsSync(INPUT_DIRECTORY)) {
+    console.error("input directory does not exists")
+    process.exit(1)
+  }
+  const fileNamesWithExtension = fs.readdirSync(INPUT_DIRECTORY)
+    .filter(f => extensions.some(e => f.endsWith(`.${e}`)))
+
+  const fileNames = fileNamesWithExtension
+    .map(f => { 
+      const name = f.split('.'); 
+      return [f, name[0]] 
+    })
+
+  return fileNames
+}
+
+const process = async (file, name) => {
+  if (PROCESS_TYPE === 'removeBackground' || PROCESS_TYPE === 'resizeAndRemoveBackground') {
+    await removeBackground(`${INPUT_DIRECTORY}/${file}`, `${TEMP_DIRECTORY}/${name}.webp`);
+  } else {
+    fs.copyFileSync(`${INPUT_DIRECTORY}/${file}`, `${TEMP_DIRECTORY}/${name}.webp`);
+  }
+
+  if (PROCESS_TYPE === 'resize' || PROCESS_TYPE === 'resizeAndRemoveBackground') {
+    await resize(`${TEMP_DIRECTORY}/${name}.webp`, `${OUTPUT_DIRECTORY}/${name}.webp`)
+  } else {
+    fs.copyFileSync(`${TEMP_DIRECTORY}/${name}.webp`, `${OUTPUT_DIRECTORY}/${name}.webp`)
+  }
+}
+
+const prepare = () => {
+  if (fs.existsSync(TEMP_DIRECTORY)) {
+    fs.rmSync(TEMP_DIRECTORY, { recursive: true })
+  }
+  fs.mkdirSync(TEMP_DIRECTORY, { recursive: true })
+  if (fs.existsSync(OUTPUT_DIRECTORY)) {
+    fs.rmSync(OUTPUT_DIRECTORY, { recursive: true })
+  }
+  fs.mkdirSync(OUTPUT_DIRECTORY, { recursive: true })
 }
 
 const main = async () => {
-  if (!fs.existsSync(OUTPUT_DIRECTORY)) {
-    fs.mkdirSync(OUTPUT_DIRECTORY, { recursive: true })
-  }
-  const files = fs.readdirSync(INPUT_DIRECTORY).filter(s => s.endsWith(".webp"))
+  prepare()
+  const files = await readFiles(['webp', 'png'])
 
   const chunkSize = 3;
   for (let i = 0; i < files.length; i += chunkSize) {
     const chunk = files.slice(i, i + chunkSize);
-    // background remove
-    // const processes = chunk.map(file => removeBackground(`${INPUT_DIRECTORY}/${file}`, `${OUTPUT_DIRECTORY}/${file}`))
-    // resize for site scale
-    const processes = chunk.map(file => resize(file).catch(console.log))
-    await Promise.allSettled(processes)
+    const promises = chunk.map(([file, name]) => process(file, name))
+
+    await Promise.allSettled(promises)
   }
 }
 

@@ -66,7 +66,7 @@ const readFiles = async (extensions) => {
   return fileNames
 }
 
-const process = async (file, name) => {
+const execute = async (file, name) => {
   if (PROCESS_TYPE === 'removeBackground' || PROCESS_TYPE === 'resizeAndRemoveBackground') {
     await removeBackground(`${INPUT_DIRECTORY}/${file}`, `${TEMP_DIRECTORY}/${name}.webp`);
   } else {
@@ -98,7 +98,7 @@ const main = async () => {
   const chunkSize = 3;
   for (let i = 0; i < files.length; i += chunkSize) {
     const chunk = files.slice(i, i + chunkSize);
-    const promises = chunk.map(([file, name]) => process(file, name))
+    const promises = chunk.map(([file, name]) => execute(file, name))
 
     await Promise.allSettled(promises)
   }
